@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#4338ca" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Nifty Top-20" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="application-name" content="Nifty Top-20" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png" />
+  <title>Nifty Top-20 Strategy</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <style>
+    :root {
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-top: env(safe-area-inset-top, 0px);
+    }
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      overscroll-behavior: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    body {
+      background: #f1f5f9;
+      padding-bottom: calc(64px + var(--safe-bottom));
+      padding-top: var(--safe-top);
+    }
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      height: calc(64px + var(--safe-bottom));
+      padding-bottom: var(--safe-bottom);
+      background: #fff; border-top: 1px solid #e2e8f0;
+      display: flex; z-index: 50;
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
+    }
+    .nav-item {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 2px;
+      font-size: 11px; color: #64748b; cursor: pointer;
+    }
+    .nav-item.active { color: #4f46e5; font-weight: 600; }
+    .nav-item svg { width: 22px; height: 22px; }
+    .v-buy { background: #d1fae5; color: #065f46; }
+    .v-hold { background: #fef3c7; color: #92400e; }
+    .v-remove { background: #fee2e2; color: #991b1b; }
+    .filter-btn { background: #fff; color: #64748b; }
+    .filter-btn.active-filter { background: #4f46e5; color: #fff; border-color: #4f46e5 !important; }
+    .filter-btn[data-filter="Buy"].active-filter { background: #059669; border-color: #059669 !important; }
+    .filter-btn[data-filter="Hold"].active-filter { background: #d97706; border-color: #d97706 !important; }
+    .filter-btn[data-filter="Remove"].active-filter { background: #dc2626; border-color: #dc2626 !important; }
+    .card {
+      background: #fff; border-radius: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;
+    }
+    .rank-card {
+      background: #fff; border-radius: 14px; padding: 14px;
+      border: 1px solid #e2e8f0; margin-bottom: 10px;
+    }
+    .rank-card .top-row {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+    }
+    .rank-card .metrics {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+      font-size: 12px; text-align: center;
+    }
+    .rank-card .metrics div {
+      background: #f8fafc; border-radius: 8px; padding: 6px 2px;
+    }
+    .rank-card .metrics .label { color: #94a3b8; font-size: 10px; }
+    .rank-card .metrics .val { font-weight: 600; font-size: 13px; }
+    .spinner {
+      width: 28px; height: 28px; border: 3px solid #e2e8f0;
+      border-top-color: #4f46e5; border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .tab-content { animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    input, select, button { font-size: 16px !important; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      border-radius: 12px; font-weight: 600; padding: 12px 18px;
+      transition: transform 0.1s, opacity 0.15s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: #4f46e5; color: #fff; }
+    .btn-primary:disabled { opacity: 0.6; }
+    .btn-green { background: #059669; color: #fff; }
+    .btn-outline { background: #fff; border: 1.5px solid #e2e8f0; color: #334155; }
+    .cash-pill {
+      background: rgba(255,255,255,0.18); border-radius: 999px;
+      padding: 6px 12px; font-size: 13px; font-weight: 600;
+    }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 100; display: flex; align-items: flex-end; justify-content: center;
+    }
+    .modal-sheet {
+      background: #fff; width: 100%; max-width: 480px;
+      border-radius: 20px 20px 0 0;
+      padding: 20px 20px calc(20px + var(--safe-bottom));
+      animation: slideUp 0.25s ease;
+    }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: none; } }
+    .progress-bar {
+      height: 6px; background: #e2e8f0; border-radius: 999px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; background: #4f46e5; border-radius: 999px; transition: width 0.3s;
+    }
+    @media (min-width: 768px) {
+      body { padding-bottom: 0; }
+      .bottom-nav { display: none; }
+      .desktop-nav { display: flex !important; }
+      .rank-cards { display: none; }
+      .rank-table-wrap { display: block !important; }
+    }
+    @media (max-width: 767px) {
+      .rank-table-wrap { display: none; }
+      .desktop-nav { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="bg-indigo-700 text-white sticky top-0 z-40" style="padding-top: var(--safe-top);">
+    <div class="px-4 py-3 flex items-center justify-between gap-3">
+      <div class="min-w-0">
+        <h1 class="text-base font-bold truncate leading-tight">Nifty Top-20</h1>
+        <p class="text-[11px] text-indigo-200 truncate">Growth + Momentum Strategy</p>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <div class="cash-pill" id="cashDisplay">₹0</div>
+        <button onclick="showAddFunds()" class="bg-white text-indigo-700 w-9 h-9 rounded-full font-bold text-lg flex items-center justify-center shadow">+</button>
+      </div>
+    </div>
+    <div class="desktop-nav hidden border-t border-indigo-600/40 px-2 overflow-x-auto">
+      <button class="tab-btn px-4 py-2.5 text-sm font-medium text-indigo-200 border-b-2 border-transparent" data-tab="ranking" onclick="switchTab('ranking')">Ranking</button>
+      <button class="tab-btn px-4 py-2.5 text-sm font-medium text-indigo-200 border-b-2 border-transparent" data-tab="micro" onclick="switchTab('micro')">Analysis</button>
+      <button class="tab-btn px-4 py-2.5 text-sm font-medium text-indigo-200 border-b-2 border-transparent" data-tab="portfolio" onclick="switchTab('portfolio')">Buy/Sell</button>
+      <button class="tab-btn px-4 py-2.5 text-sm font-medium text-indigo-200 border-b-2 border-transparent" data-tab="records" onclick="switchTab('records')">Records</button>
+      <button class="tab-btn px-4 py-2.5 text-sm font-medium text-indigo-200 border-b-2 border-transparent" data-tab="sip" onclick="switchTab('sip')">SIP</button>
+    </div>
+  </header>
+
+  <main class="px-3 py-4 max-w-3xl mx-auto">
+
+    <!-- RANKING -->
+    <section id="tab-ranking" class="tab-content">
+      <div class="flex items-center justify-between mb-3 gap-2">
+        <h2 class="text-lg font-semibold text-slate-800">Top-20 Ranking</h2>
+        <button id="rankBtn" onclick="loadRanking()" class="btn btn-primary text-sm py-2 px-4">
+          <span>↻ Refresh</span>
+        </button>
+      </div>
+      <p class="text-xs text-slate-500 mb-3 leading-relaxed">
+        Score = 1M/3M momentum + MA trend + RSI + volume.
+        <span class="v-buy px-1.5 py-0.5 rounded text-[10px] font-medium">Buy</span>
+        <span class="v-hold px-1.5 py-0.5 rounded text-[10px] font-medium">Hold</span>
+        <span class="v-remove px-1.5 py-0.5 rounded text-[10px] font-medium">Remove</span>
+      </p>
+
+      <!-- Monthly Rebalance Checklist -->
+      <div class="card p-4 mb-4 border-indigo-100" id="checklistCard">
+        <button onclick="toggleChecklist()" class="w-full flex items-center justify-between text-left">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">📋</span>
+            <span class="font-semibold text-slate-800 text-sm">Monthly Rebalance Checklist</span>
+          </div>
+          <span id="checklistArrow" class="text-slate-400 text-lg">▼</span>
+        </button>
+        <div id="checklistBody" class="hidden mt-3 pt-3 border-t border-slate-100">
+          <p class="text-xs text-slate-500 mb-3">Do this once every month (last trading day or 1st of month).</p>
+          <ol class="space-y-3 text-sm text-slate-700">
+            <li class="flex gap-2">
+              <span class="font-bold text-indigo-600 shrink-0">1.</span>
+              <span><strong>Refresh Ranking</strong> → Get fresh Top-20 with Buy / Hold / Remove</span>
+            </li>
+            <li class="flex gap-2">
+              <span class="font-bold text-indigo-600 shrink-0">2.</span>
+              <span><strong>Sell first</strong> → Exit any stock that shows <span class="v-remove px-1.5 py-0.5 rounded text-[10px] font-medium">Remove</span></span>
+            </li>
+            <li class="flex gap-2">
+              <span class="font-bold text-indigo-600 shrink-0">3.</span>
+              <span><strong>Add monthly money</strong> → Tap + and add ₹3,000 (or your SIP amount)</span>
+            </li>
+            <li class="flex gap-2">
+              <span class="font-bold text-indigo-600 shrink-0">4.</span>
+              <span><strong>Buy</strong> → Prefer stocks with <span class="v-buy px-1.5 py-0.5 rounded text-[10px] font-medium">Buy</span>. Among them, choose higher Score first.</span>
+            </li>
+            <li class="flex gap-2">
+              <span class="font-bold text-indigo-600 shrink-0">5.</span>
+              <span><strong>Hold</strong> → Do nothing on stocks showing <span class="v-hold px-1.5 py-0.5 rounded text-[10px] font-medium">Hold</span></span>
+            </li>
+            <li class="flex gap-2">
+              <span class="font-bold text-indigo-600 shrink-0">6.</span>
+              <span>Keep portfolio around <strong>15–20 stocks</strong>, roughly equal weight.</span>
+            </li>
+          </ol>
+          <div class="mt-4 p-3 bg-indigo-50 rounded-xl text-xs text-indigo-800 leading-relaxed">
+            <strong>Rule of thumb:</strong><br>
+            Verdict = Action (Buy / Hold / Remove)<br>
+            Score = Priority (which Buy stock to pick first)
+          </div>
+        </div>
+      </div>
+
+      <div id="rankStatus" class="mb-3">
+        <div class="text-sm text-slate-500">Tap Refresh to load live Top-20 list</div>
+      </div>
+
+      <!-- Verdict Filter -->
+      <div id="verdictFilters" class="hidden mb-3 flex flex-wrap gap-2">
+        <button onclick="setVerdictFilter('All')" class="filter-btn active-filter px-3 py-1.5 rounded-full text-xs font-semibold border border-slate-200" data-filter="All">All</button>
+        <button onclick="setVerdictFilter('Buy')" class="filter-btn px-3 py-1.5 rounded-full text-xs font-semibold border border-slate-200" data-filter="Buy">Buy</button>
+        <button onclick="setVerdictFilter('Hold')" class="filter-btn px-3 py-1.5 rounded-full text-xs font-semibold border border-slate-200" data-filter="Hold">Hold</button>
+        <button onclick="setVerdictFilter('Remove')" class="filter-btn px-3 py-1.5 rounded-full text-xs font-semibold border border-slate-200" data-filter="Remove">Remove</button>
+      </div>
+      <div id="filterCount" class="text-xs text-slate-400 mb-2 hidden"></div>
+
+      <div id="rankCards" class="rank-cards"></div>
+
+      <div class="rank-table-wrap hidden overflow-x-auto card">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-600">
+            <tr>
+              <th class="p-2.5 text-left">#</th>
+              <th class="p-2.5 text-left">Symbol</th>
+              <th class="p-2.5 text-right">Score</th>
+              <th class="p-2.5 text-right">Price</th>
+              <th class="p-2.5 text-right">1M%</th>
+              <th class="p-2.5 text-right">3M%</th>
+              <th class="p-2.5 text-right">RSI</th>
+              <th class="p-2.5 text-center">Verdict</th>
+            </tr>
+          </thead>
+          <tbody id="rankBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- MICRO -->
+    <section id="tab-micro" class="tab-content hidden">
+      <h2 class="text-lg font-semibold text-slate-800 mb-3">Micro Analysis</h2>
+      <div class="flex gap-2 mb-4">
+        <select id="microSelect" class="flex-1 border border-slate-200 rounded-xl px-3 py-3 bg-white text-slate-800"></select>
+        <button onclick="loadMicro()" class="btn btn-primary shrink-0">Load</button>
+      </div>
+      <div id="microMetrics" class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3"></div>
+      <div id="microVerdict" class="mb-3"></div>
+      <div class="card p-3 mb-3" style="height:220px"><canvas id="priceChart"></canvas></div>
+      <div class="grid grid-cols-1 gap-3">
+        <div class="card p-3" style="height:160px"><canvas id="rsiChart"></canvas></div>
+        <div class="card p-3" style="height:160px"><canvas id="macdChart"></canvas></div>
+      </div>
+    </section>
+
+    <!-- PORTFOLIO -->
+    <section id="tab-portfolio" class="tab-content hidden">
+      <h2 class="text-lg font-semibold text-slate-800 mb-3">Buy / Sell</h2>
+
+      <div class="card p-4 mb-4">
+        <h3 class="font-semibold text-slate-700 mb-3 text-sm">Add Purchase</h3>
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs text-slate-500 mb-1 block">Stock</label>
+            <select id="buySelect" class="w-full border border-slate-200 rounded-xl px-3 py-3 bg-white"></select>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-xs text-slate-500 mb-1 block">Quantity</label>
+              <input type="number" id="buyQty" value="1" min="1" step="1" class="w-full border border-slate-200 rounded-xl px-3 py-3 text-center" />
+            </div>
+            <div>
+              <label class="text-xs text-slate-500 mb-1 block">Buy Price (₹)</label>
+              <input type="number" id="buyPrice" value="" min="0.01" step="0.01" placeholder="e.g. 1450" class="w-full border border-slate-200 rounded-xl px-3 py-3 text-center" />
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="fetchBuyPrice()" class="btn btn-outline flex-1 text-sm py-2.5">Get Live Price</button>
+            <button onclick="executeBuy()" class="btn btn-green flex-1">🛒 Buy</button>
+          </div>
+          <p id="buyHint" class="text-xs text-slate-400">Enter price manually or tap Get Live Price</p>
+        </div>
+      </div>
+
+      <div class="card p-4 mb-4">
+        <h3 class="font-semibold text-slate-700 mb-3 text-sm">Sell / Reduce</h3>
+        <div class="space-y-3">
+          <select id="sellSelect" class="w-full border border-slate-200 rounded-xl px-3 py-3 bg-white">
+            <option value="">— Select holding —</option>
+          </select>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-xs text-slate-500 mb-1 block">Quantity</label>
+              <input type="number" id="sellQty" value="1" min="1" class="w-full border border-slate-200 rounded-xl px-3 py-3 text-center" />
+            </div>
+            <div>
+              <label class="text-xs text-slate-500 mb-1 block">Sell Price (₹)</label>
+              <input type="number" id="sellPrice" value="" min="0.01" step="0.01" placeholder="e.g. 1500" class="w-full border border-slate-200 rounded-xl px-3 py-3 text-center" />
+            </div>
+          </div>
+          <button onclick="executeSell()" class="btn w-full" style="background:#dc2626;color:#fff">Sell</button>
+        </div>
+      </div>
+
+      <div class="card p-4">
+        <div class="flex justify-between items-center mb-2">
+          <h3 class="font-semibold text-slate-700 text-sm">Quick Holdings</h3>
+          <button onclick="resetPortfolio()" class="text-xs text-red-500">Reset All</button>
+        </div>
+        <div id="holdingsList" class="space-y-2"></div>
+        <p class="text-[11px] text-slate-400 mt-3">See full details & P&amp;L in <strong>Records</strong> tab</p>
+      </div>
+    </section>
+
+    <!-- RECORDS -->
+    <section id="tab-records" class="tab-content hidden">
+      <h2 class="text-lg font-semibold text-slate-800 mb-3">Records &amp; P&amp;L</h2>
+
+      <div class="grid grid-cols-2 gap-2 mb-4" id="recordsSummary">
+        <div class="card p-3 text-center">
+          <div class="text-[10px] text-slate-400">Invested</div>
+          <div id="sumInvested" class="text-base font-bold text-slate-800">₹0</div>
+        </div>
+        <div class="card p-3 text-center">
+          <div class="text-[10px] text-slate-400">Current Value</div>
+          <div id="sumCurrent" class="text-base font-bold text-indigo-600">₹0</div>
+        </div>
+        <div class="card p-3 text-center">
+          <div class="text-[10px] text-slate-400">Overall P&amp;L</div>
+          <div id="sumPnl" class="text-base font-bold">₹0</div>
+        </div>
+        <div class="card p-3 text-center">
+          <div class="text-[10px] text-slate-400">Cash</div>
+          <div id="sumCash" class="text-base font-bold text-slate-800">₹0</div>
+        </div>
+      </div>
+
+      <div class="flex gap-2 mb-3">
+        <button id="refreshRecordsBtn" onclick="refreshRecordsPrices()" class="btn btn-primary flex-1 text-sm py-2.5">↻ Refresh Prices</button>
+      </div>
+
+      <div id="recordsVerdictBanner" class="mb-2"></div>
+      <div id="recordsList" class="space-y-2"></div>
+      <div id="recordsEmpty" class="card p-6 text-center text-slate-400 text-sm hidden">
+        No holdings yet. Buy stocks from Portfolio tab.
+      </div>
+    </section>
+
+    <!-- SIP -->
+    <section id="tab-sip" class="tab-content hidden">
+      <h2 class="text-lg font-semibold text-slate-800 mb-3">SIP Simulator</h2>
+      <div class="card p-4">
+        <div class="space-y-4">
+          <div>
+            <label class="text-xs text-slate-500 mb-1 block">Monthly Investment (₹)</label>
+            <input type="number" id="sipMonthly" value="3000" step="500" class="w-full border border-slate-200 rounded-xl px-3 py-3" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-500 mb-1 block">Years</label>
+            <input type="number" id="sipYears" value="3" min="1" max="15" class="w-full border border-slate-200 rounded-xl px-3 py-3" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-500 mb-1 block">Assumed CAGR: <span id="cagrVal" class="font-semibold text-indigo-600">14</span>%</label>
+            <input type="range" id="sipCagr" min="8" max="22" value="14" step="0.5" class="w-full accent-indigo-600"
+              oninput="document.getElementById('cagrVal').textContent=this.value" />
+          </div>
+          <button onclick="calcSIP()" class="btn btn-primary w-full">Calculate</button>
+        </div>
+        <div id="sipResult" class="grid grid-cols-3 gap-2 mt-5 text-center"></div>
+        <p class="text-[11px] text-slate-400 mt-4 leading-relaxed">
+          Illustrative only. Real returns depend on markets, costs, taxes & discipline.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <div class="nav-item active" data-tab="ranking" onclick="switchTab('ranking')">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>
+      Ranking
+    </div>
+    <div class="nav-item" data-tab="micro" onclick="switchTab('micro')">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+      Analysis
+    </div>
+    <div class="nav-item" data-tab="portfolio" onclick="switchTab('portfolio')">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 010-4h14v4"/><path d="M3 5v14a2 2 0 002 2h16v-5"/><path d="M18 12a2 2 0 000 4h4v-4z"/></svg>
+      Buy/Sell
+    </div>
+    <div class="nav-item" data-tab="records" onclick="switchTab('records')">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h6"/></svg>
+      Records
+    </div>
+    <div class="nav-item" data-tab="sip" onclick="switchTab('sip')">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      SIP
+    </div>
+  </nav>
+
+  <div id="fundsModal" class="modal-backdrop hidden" onclick="if(event.target===this)hideAddFunds()">
+    <div class="modal-sheet">
+      <div class="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-4"></div>
+      <h3 class="font-semibold text-lg mb-1">Add Funds</h3>
+      <p class="text-sm text-slate-500 mb-4">Add money to buy stocks</p>
+      <input type="number" id="addAmount" value="3000" min="0" step="500"
+        class="w-full border border-slate-200 rounded-xl px-4 py-3.5 mb-4 text-lg font-semibold" />
+      <div class="flex gap-2">
+        <button onclick="hideAddFunds()" class="btn btn-outline flex-1">Cancel</button>
+        <button onclick="addFunds()" class="btn btn-primary flex-1">Add</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const NIFTY50 = [
+  "RELIANCE.NS","BHARTIARTL.NS","HDFCBANK.NS","ICICIBANK.NS","SBIN.NS",
+  "TCS.NS","BAJFINANCE.NS","LT.NS","KOTAKBANK.NS","HINDUNILVR.NS",
+  "SUNPHARMA.NS","AXISBANK.NS","INFY.NS","ADANIPORTS.NS","M&M.NS",
+  "MARUTI.NS","TITAN.NS","ULTRACEMCO.NS","ITC.NS","ADANIENT.NS",
+  "HCLTECH.NS","JSWSTEEL.NS","NTPC.NS","BAJAJFINSV.NS","BAJAJ-AUTO.NS",
+  "BEL.NS","POWERGRID.NS","ASIANPAINT.NS","TATASTEEL.NS","TECHM.NS",
+  "NESTLEIND.NS","WIPRO.NS","ONGC.NS","COALINDIA.NS","INDIGO.NS",
+  "HDFCLIFE.NS","SBILIFE.NS","GRASIM.NS","CIPLA.NS","DRREDDY.NS",
+  "APOLLOHOSP.NS","TATACONSUM.NS","EICHERMOT.NS","HEROMOTOCO.NS",
+  "BPCL.NS","BRITANNIA.NS","DIVISLAB.NS","HINDALCO.NS","TRENT.NS"
+];
+
+let portfolio = JSON.parse(localStorage.getItem("niftyPortfolio") || '{"cash":0,"holdings":{},"txns":[]}');
+let top20List = [];
+let top20Ts = 0;
+try {
+  const c = JSON.parse(localStorage.getItem("niftyTop20") || "null");
+  if (c && Array.isArray(c.list)) { top20List = c.list; top20Ts = c.ts || 0; }
+} catch (_) {}
+let lastRanking = [];          // full scored list for filtering
+let currentVerdictFilter = "All";
+let priceCharts = { price: null, rsi: null, macd: null };
+
+/* ---------- CORS-friendly fetch ---------- */
+const PROXIES = [
+  (url) => `https://proxy.cors.dev/${url}`,
+  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+];
+
+async function fetchWithTimeout(url, ms = 9000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { method: "GET", credentials: "omit", headers: { "Accept": "application/json" }, signal: ctrl.signal });
+  } finally { clearTimeout(t); }
+}
+
+// minBars: 30 for indicator work; pass 1 when only the latest price is needed (e.g. range "5d")
+async function fetchYahooChart(symbol, range = "6mo", interval = "1d", minBars = 30) {
+  const hosts = ["query1", "query2"];
+  let lastError = null;
+  for (const host of hosts) {
+    const target = `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
+    for (const makeProxy of PROXIES) {
+      try {
+        const res = await fetchWithTimeout(makeProxy(target));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const result = json.chart?.result?.[0];
+        if (!result || !result.timestamp) throw new Error("Empty chart");
+        const ts = result.timestamp;
+        const q = result.indicators.quote[0];
+        const rows = [];
+        for (let i = 0; i < ts.length; i++) {
+          if (q.close[i] == null) continue;
+          rows.push({
+            date: new Date(ts[i] * 1000),
+            open: q.open[i], high: q.high[i], low: q.low[i],
+            close: q.close[i], volume: q.volume[i] || 0
+          });
+        }
+        if (rows.length < minBars) throw new Error("Too few bars");
+        rows.meta = result.meta || {};
+        return rows;
+      } catch (e) {
+        lastError = e;
+        // try next proxy / host
+      }
+    }
+  }
+  throw lastError || new Error("All proxies failed");
+}
+
+// Latest traded price (falls back to last close)
+async function fetchLivePrice(symbol) {
+  const rows = await fetchYahooChart(symbol, "5d", "1d", 1);
+  const p = rows.meta?.regularMarketPrice ?? rows[rows.length - 1]?.close;
+  if (!p) throw new Error("No price");
+  return p;
+}
+
+/* ---------- Technicals ---------- */
+function sma(arr, period) {
+  const out = new Array(arr.length).fill(null);
+  for (let i = period - 1; i < arr.length; i++) {
+    let s = 0;
+    for (let j = 0; j < period; j++) s += arr[i - j];
+    out[i] = s / period;
+  }
+  return out;
+}
+function ema(arr, period) {
+  const out = new Array(arr.length).fill(null);
+  const k = 2 / (period + 1);
+  let prev = null;
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i] == null) continue;
+    if (prev == null) { prev = arr[i]; out[i] = prev; continue; }
+    prev = arr[i] * k + prev * (1 - k);
+    out[i] = prev;
+  }
+  return out;
+}
+function rsi(closes, period = 14) {
+  const out = new Array(closes.length).fill(null);
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d >= 0) gains += d; else losses -= d;
+  }
+  let avgG = gains / period, avgL = losses / period;
+  out[period] = avgL === 0 ? 100 : 100 - 100 / (1 + avgG / avgL);
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    const g = d > 0 ? d : 0, l = d < 0 ? -d : 0;
+    avgG = (avgG * (period - 1) + g) / period;
+    avgL = (avgL * (period - 1) + l) / period;
+    out[i] = avgL === 0 ? 100 : 100 - 100 / (1 + avgG / avgL);
+  }
+  return out;
+}
+function macd(closes, fast = 12, slow = 26, signal = 9) {
+  const ef = ema(closes, fast), es = ema(closes, slow);
+  const line = closes.map((_, i) => ef[i] != null && es[i] != null ? ef[i] - es[i] : null);
+  const sig = ema(line.map(v => v ?? 0), signal);
+  const hist = line.map((v, i) => v != null && sig[i] != null ? v - sig[i] : null);
+  return { macd: line, signal: sig, hist };
+}
+
+function scoreStock(rows) {
+  if (!rows || rows.length < 50) return { score: 0, metrics: {} };
+  const closes = rows.map(r => r.close);
+  const volumes = rows.map(r => r.volume);
+  const last = closes.length - 1;
+  const ret1m = closes[last] / closes[Math.max(0, last - 21)] - 1;
+  const ret3m = closes[last] / closes[Math.max(0, last - 63)] - 1;
+  const ma20 = sma(closes, 20);
+  const ma50 = sma(closes, 50);
+  const rsiArr = rsi(closes);
+  const lastRsi = rsiArr[last] || 50;
+  const aboveMa20 = closes[last] > (ma20[last] || 0);
+  const aboveMa50 = closes[last] > (ma50[last] || 0);
+  const volMa = sma(volumes, 20);
+  const volRatio = (volMa[last] && volMa[last] > 0) ? volumes[last] / volMa[last] : 1;
+
+  let score =
+    0.35 * Math.min(Math.max(ret3m * 100, -20), 40) / 40 * 100 +
+    0.25 * Math.min(Math.max(ret1m * 100, -15), 25) / 25 * 100 +
+    0.20 * ((aboveMa20 ? 50 : 0) + (aboveMa50 ? 50 : 0)) +
+    0.15 * (lastRsi > 40 && lastRsi < 70 ? 100 : lastRsi > 30 && lastRsi < 80 ? 50 : 0) +
+    0.05 * Math.min(volRatio, 2) / 2 * 100;
+  score = Math.max(0, Math.min(100, score));
+
+  return {
+    score,
+    metrics: {
+      price: closes[last],
+      ret1m: ret1m * 100,
+      ret3m: ret3m * 100,
+      rsi: lastRsi,
+      ma20: ma20[last],
+      ma50: ma50[last],
+      aboveMa20,
+      aboveMa50
+    }
+  };
+}
+
+function generateVerdict(m, inTop20) {
+  if (!m || !m.price) return { verdict: "Remove", reason: "No data" };
+  if (!inTop20) return { verdict: "Remove", reason: "Out of Top-20" };
+  if (m.price < m.ma50 && m.ret3m < -5) return { verdict: "Remove", reason: "Below 50-DMA + weak 3M" };
+  if (m.price < m.ma20 && m.rsi < 40) return { verdict: "Remove", reason: "Breakdown (MA20 + RSI)" };
+  if (m.price > m.ma20 && m.rsi >= 40 && m.rsi <= 65 && m.ret3m > 0)
+    return { verdict: "Buy", reason: "Strong trend + healthy RSI" };
+  if (m.price > m.ma50) return { verdict: "Hold", reason: "Above 50-DMA" };
+  return { verdict: "Hold", reason: "Neutral – monitor" };
+}
+
+/* ---------- UI helpers ---------- */
+function fmt(n) {
+  return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+}
+function savePortfolio() {
+  localStorage.setItem("niftyPortfolio", JSON.stringify(portfolio));
+  document.getElementById("cashDisplay").textContent = fmt(portfolio.cash);
+  renderHoldings();
+}
+function showAddFunds() { document.getElementById("fundsModal").classList.remove("hidden"); }
+function hideAddFunds() { document.getElementById("fundsModal").classList.add("hidden"); }
+function addFunds() {
+  const amt = Number(document.getElementById("addAmount").value) || 0;
+  if (amt > 0) {
+    portfolio.cash += amt;
+    portfolio.txns.push({ date: new Date().toISOString(), type: "CREDIT", amount: amt });
+    savePortfolio();
+    hideAddFunds();
+  }
+}
+function switchTab(name) {
+  document.querySelectorAll(".tab-content").forEach(el => el.classList.add("hidden"));
+  document.getElementById("tab-" + name).classList.remove("hidden");
+  document.querySelectorAll(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.tab === name));
+  document.querySelectorAll(".tab-btn").forEach(el => {
+    const active = el.dataset.tab === name;
+    el.classList.toggle("text-white", active);
+    el.classList.toggle("border-white", active);
+    el.classList.toggle("text-indigo-200", !active);
+    el.classList.toggle("border-transparent", !active);
+  });
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function toggleChecklist() {
+  const body = document.getElementById("checklistBody");
+  const arrow = document.getElementById("checklistArrow");
+  const isHidden = body.classList.contains("hidden");
+  body.classList.toggle("hidden", !isHidden);
+  arrow.textContent = isHidden ? "▲" : "▼";
+}
+
+/* ---------- RANKING (main fix) ---------- */
+async function loadRanking() {
+  const btn = document.getElementById("rankBtn");
+  const status = document.getElementById("rankStatus");
+  const cards = document.getElementById("rankCards");
+  const body = document.getElementById("rankBody");
+
+  btn.disabled = true;
+  cards.innerHTML = "";
+  body.innerHTML = "";
+  lastRanking = [];                       // drop stale results so filters can't show old data
+  document.getElementById("verdictFilters").classList.add("hidden");
+  document.getElementById("filterCount").classList.add("hidden");
+
+  status.innerHTML = `
+    <div class="card p-4">
+      <div class="flex items-center gap-3 mb-2">
+        <div class="spinner"></div>
+        <div>
+          <div class="font-medium text-slate-800">Fetching live data…</div>
+          <div class="text-xs text-slate-500" id="progressText">Starting…</div>
+        </div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    </div>
+  `;
+
+  const results = [];
+  const total = NIFTY50.length;
+  let done = 0;
+  const batchSize = 4; // smaller batches = more reliable through free proxies
+
+  for (let i = 0; i < total; i += batchSize) {
+    const batch = NIFTY50.slice(i, i + batchSize);
+    const promises = batch.map(async (sym) => {
+      try {
+        const rows = await fetchYahooChart(sym, "6mo");
+        const { score, metrics } = scoreStock(rows);
+        return { sym, score, metrics, ok: true };
+      } catch (e) {
+        console.warn(sym, e.message);
+        return { sym, score: 0, metrics: {}, ok: false };
+      }
+    });
+
+    const batchRes = await Promise.all(promises);
+    results.push(...batchRes);
+    done += batch.length;
+
+    const pct = Math.round((done / total) * 100);
+    const fill = document.getElementById("progressFill");
+    const txt = document.getElementById("progressText");
+    if (fill) fill.style.width = pct + "%";
+    if (txt) txt.textContent = `${done} / ${total} stocks loaded (${pct}%)`;
+  }
+
+  // Keep only successful ones, sort by score (highest first)
+  const valid = results.filter(r => r.ok && r.metrics.price);
+  valid.sort((a, b) => b.score - a.score);
+
+  if (valid.length < 5) {
+    status.innerHTML = `
+      <div class="card p-4 text-center">
+        <div class="text-red-600 font-medium mb-2">Could not load enough data</div>
+        <div class="text-sm text-slate-500 mb-3">Network or proxy issue. Please try again in 30 seconds.</div>
+        <button onclick="loadRanking()" class="btn btn-primary">Try Again</button>
+      </div>
+    `;
+    btn.disabled = false;
+    return;
+  }
+
+  // Enrich with verdict and keep full ranked list
+  lastRanking = valid.map((r, idx) => {
+    const { verdict, reason } = generateVerdict(r.metrics, idx < 20);
+    return { ...r, rank: idx + 1, verdict, reason };
+  });
+  top20List = lastRanking.slice(0, 20).map(r => r.sym);
+  top20Ts = Date.now();
+  try { localStorage.setItem("niftyTop20", JSON.stringify({ list: top20List, ts: top20Ts })); } catch (_) {}
+  currentVerdictFilter = "All";
+
+  // Show filter buttons
+  document.getElementById("verdictFilters").classList.remove("hidden");
+  document.querySelectorAll(".filter-btn").forEach(b => {
+    b.classList.toggle("active-filter", b.dataset.filter === "All");
+  });
+
+  status.innerHTML = `
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-green-600 font-medium">✓ Ranked by Score · ${lastRanking.length} stocks</span>
+      <span class="text-slate-400 text-xs">${new Date().toLocaleTimeString()}</span>
+    </div>
+  `;
+
+  renderRankingList();
+  btn.disabled = false;
+}
+
+function setVerdictFilter(filter) {
+  currentVerdictFilter = filter;
+  document.querySelectorAll(".filter-btn").forEach(b => {
+    b.classList.toggle("active-filter", b.dataset.filter === filter);
+  });
+  renderRankingList();
+}
+
+function renderRankingList() {
+  const cards = document.getElementById("rankCards");
+  const body = document.getElementById("rankBody");
+  const countEl = document.getElementById("filterCount");
+  cards.innerHTML = "";
+  body.innerHTML = "";
+
+  // Always sorted by score (already sorted in lastRanking)
+  let list = lastRanking;
+  if (currentVerdictFilter !== "All") {
+    list = lastRanking.filter(r => r.verdict === currentVerdictFilter);
+  }
+
+  // For "All" show Top-20; for specific verdict show all matching (still score-sorted)
+  if (currentVerdictFilter === "All") {
+    list = list.slice(0, 20);
+  }
+
+  countEl.classList.remove("hidden");
+  countEl.textContent = currentVerdictFilter === "All"
+    ? `Showing Top-20 (sorted by Score high → low)`
+    : `Showing ${list.length} · ${currentVerdictFilter} (sorted by Score high → low)`;
+
+  if (list.length === 0) {
+    cards.innerHTML = `<div class="card p-6 text-center text-slate-400 text-sm">No stocks with "${currentVerdictFilter}" verdict</div>`;
+    return;
+  }
+
+  list.forEach((r, idx) => {
+    const vClass = r.verdict === "Buy" ? "v-buy" : r.verdict === "Remove" ? "v-remove" : "v-hold";
+    const ret1 = r.metrics.ret1m ?? 0;
+    const ret3 = r.metrics.ret3m ?? 0;
+
+    // Mobile card
+    const card = document.createElement("div");
+    card.className = "rank-card";
+    card.innerHTML = `
+      <div class="top-row">
+        <div class="flex items-center gap-2">
+          <span class="text-slate-400 text-sm font-medium w-5">#${r.rank}</span>
+          <span class="font-bold text-slate-800">${r.sym.replace(".NS","")}</span>
+        </div>
+        <span class="px-2.5 py-1 rounded-full text-xs font-semibold ${vClass}">${r.verdict}</span>
+      </div>
+      <div class="metrics">
+        <div><div class="label">Score</div><div class="val">${r.score.toFixed(0)}</div></div>
+        <div><div class="label">Price</div><div class="val">${r.metrics.price.toFixed(0)}</div></div>
+        <div><div class="label">1M</div><div class="val ${ret1 >= 0 ? 'text-green-600' : 'text-red-500'}">${ret1.toFixed(1)}%</div></div>
+        <div><div class="label">3M</div><div class="val ${ret3 >= 0 ? 'text-green-600' : 'text-red-500'}">${ret3.toFixed(1)}%</div></div>
+      </div>
+      <div class="mt-2 text-[11px] text-slate-500">
+        RSI ${r.metrics.rsi?.toFixed(0) ?? "-"} · MA20 ${r.metrics.aboveMa20 ? "✓" : "✗"} · MA50 ${r.metrics.aboveMa50 ? "✓" : "✗"}
+      </div>
+      <div class="mt-1 text-[11px] text-slate-400">${r.reason}</div>
+    `;
+    cards.appendChild(card);
+
+    // Desktop row
+    const tr = document.createElement("tr");
+    tr.className = "border-t border-slate-100";
+    tr.innerHTML = `
+      <td class="p-2.5">${r.rank}</td>
+      <td class="p-2.5 font-medium">${r.sym.replace(".NS","")}</td>
+      <td class="p-2.5 text-right font-semibold">${r.score.toFixed(1)}</td>
+      <td class="p-2.5 text-right">${r.metrics.price.toFixed(1)}</td>
+      <td class="p-2.5 text-right ${ret1 >= 0 ? 'text-green-600' : 'text-red-500'}">${ret1.toFixed(1)}</td>
+      <td class="p-2.5 text-right ${ret3 >= 0 ? 'text-green-600' : 'text-red-500'}">${ret3.toFixed(1)}</td>
+      <td class="p-2.5 text-right">${r.metrics.rsi?.toFixed(0) ?? "-"}</td>
+      <td class="p-2.5 text-center"><span class="px-2 py-0.5 rounded text-xs font-medium ${vClass}">${r.verdict}</span></td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+/* ---------- MICRO ---------- */
+async function loadMicro() {
+  const sym = document.getElementById("microSelect").value;
+  if (!sym) return;
+  const metricsDiv = document.getElementById("microMetrics");
+  const verdictDiv = document.getElementById("microVerdict");
+  metricsDiv.innerHTML = '<div class="col-span-2 flex justify-center py-6"><div class="spinner"></div></div>';
+  verdictDiv.innerHTML = "";
+
+  try {
+    const rows = await fetchYahooChart(sym, "1y");
+    const closes = rows.map(r => r.close);
+    const { score, metrics } = scoreStock(rows);
+    const inTop = top20List.includes(sym);
+    const { verdict, reason } = generateVerdict(metrics, inTop);
+    const vClass = verdict === "Buy" ? "v-buy" : verdict === "Remove" ? "v-remove" : "v-hold";
+
+    metricsDiv.innerHTML = `
+      <div class="card p-3 text-center"><div class="text-[10px] text-slate-400">Price</div><div class="text-base font-bold">${metrics.price?.toFixed(1)}</div></div>
+      <div class="card p-3 text-center"><div class="text-[10px] text-slate-400">RSI</div><div class="text-base font-bold">${metrics.rsi?.toFixed(1)}</div></div>
+      <div class="card p-3 text-center"><div class="text-[10px] text-slate-400">vs MA20</div><div class="text-base font-bold">${((metrics.price / metrics.ma20 - 1) * 100).toFixed(1)}%</div></div>
+      <div class="card p-3 text-center"><div class="text-[10px] text-slate-400">vs MA50</div><div class="text-base font-bold">${((metrics.price / metrics.ma50 - 1) * 100).toFixed(1)}%</div></div>
+      <div class="card p-3 text-center col-span-2 sm:col-span-1"><div class="text-[10px] text-slate-400">Score</div><div class="text-base font-bold">${score.toFixed(1)}</div></div>
+    `;
+    verdictDiv.innerHTML = `
+      <div class="card p-3 flex items-center gap-3">
+        <span class="px-3 py-1.5 rounded-full text-sm font-semibold ${vClass}">${verdict}</span>
+        <span class="text-sm text-slate-600">${reason}</span>
+      </div>
+    `;
+
+    const labels = rows.map(r => r.date);
+    const ma20 = sma(closes, 20);
+    const ma50 = sma(closes, 50);
+    const rsiArr = rsi(closes);
+    const { macd: mLine, signal: sLine, hist } = macd(closes);
+
+    if (priceCharts.price) priceCharts.price.destroy();
+    if (priceCharts.rsi) priceCharts.rsi.destroy();
+    if (priceCharts.macd) priceCharts.macd.destroy();
+
+    const commonOpts = {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { type: "time", time: { unit: "month" }, ticks: { maxTicksLimit: 5, font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { font: { size: 10 } }, grid: { color: "#f1f5f9" } }
+      }
+    };
+
+    priceCharts.price = new Chart(document.getElementById("priceChart"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          { label: "Close", data: closes, borderColor: "#4f46e5", borderWidth: 1.5, pointRadius: 0, tension: 0.1 },
+          { label: "MA20", data: ma20, borderColor: "#f59e0b", borderWidth: 1, pointRadius: 0 },
+          { label: "MA50", data: ma50, borderColor: "#10b981", borderWidth: 1.2, pointRadius: 0 }
+        ]
+      },
+      options: { ...commonOpts, plugins: { legend: { display: true, position: "top", labels: { boxWidth: 12, font: { size: 11 } } } } }
+    });
+
+    priceCharts.rsi = new Chart(document.getElementById("rsiChart"), {
+      type: "line",
+      data: { labels, datasets: [{ data: rsiArr, borderColor: "#7c3aed", borderWidth: 1.5, pointRadius: 0 }] },
+      options: {
+        ...commonOpts,
+        plugins: { ...commonOpts.plugins, title: { display: true, text: "RSI (14)", font: { size: 12 } } },
+        scales: { ...commonOpts.scales, y: { min: 0, max: 100, ticks: { font: { size: 10 } } } }
+      }
+    });
+
+    priceCharts.macd = new Chart(document.getElementById("macdChart"), {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          { label: "MACD", data: mLine, type: "line", borderColor: "#3b82f6", borderWidth: 1.5, pointRadius: 0 },
+          { label: "Signal", data: sLine, type: "line", borderColor: "#ef4444", borderWidth: 1, pointRadius: 0 },
+          { label: "Hist", data: hist, backgroundColor: "rgba(100,116,139,0.25)" }
+        ]
+      },
+      options: {
+        ...commonOpts,
+        plugins: { legend: { display: true, position: "top", labels: { boxWidth: 10, font: { size: 10 } } }, title: { display: true, text: "MACD", font: { size: 12 } } }
+      }
+    });
+  } catch (e) {
+    metricsDiv.innerHTML = `<div class="col-span-2 text-red-500 text-sm text-center py-4">${e.message}<br><button onclick="loadMicro()" class="mt-2 text-indigo-600 underline">Retry</button></div>`;
+  }
+}
+
+/* ---------- PORTFOLIO ---------- */
+async function fetchBuyPrice() {
+  const sym = document.getElementById("buySelect").value;
+  const hint = document.getElementById("buyHint");
+  if (!sym) return;
+  hint.textContent = "Fetching live price…";
+  try {
+    const price = await fetchLivePrice(sym);
+    if (document.getElementById("buySelect").value !== sym) return; // user changed stock meanwhile
+    document.getElementById("buyPrice").value = price.toFixed(2);
+    hint.textContent = `Live price loaded: ₹${price.toFixed(2)}`;
+  } catch (e) {
+    if (document.getElementById("buySelect").value !== sym) return;
+    hint.textContent = "Could not fetch. Tap Get Live Price to retry or enter manually.";
+  }
+}
+
+function executeBuy() {
+  const sym = document.getElementById("buySelect").value;
+  const qty = Number(document.getElementById("buyQty").value) || 0;
+  const price = Number(document.getElementById("buyPrice").value) || 0;
+  if (!sym || qty <= 0 || price <= 0) {
+    alert("Select stock, enter quantity and buy price.");
+    return;
+  }
+  const cost = qty * price;
+  if (cost > portfolio.cash + 0.01) {
+    alert(`Insufficient cash.\nNeed ₹${cost.toFixed(0)} · Available ₹${portfolio.cash.toFixed(0)}\nAdd funds first (+ button).`);
+    return;
+  }
+  if (!portfolio.holdings[sym]) portfolio.holdings[sym] = { qty: 0, avg: 0, lastPrice: price };
+  const h = portfolio.holdings[sym];
+  const newQty = h.qty + qty;
+  h.avg = (h.qty * h.avg + qty * price) / newQty;
+  h.qty = newQty;
+  h.lastPrice = price;
+  portfolio.cash -= cost;
+  portfolio.txns.push({ date: new Date().toISOString(), type: "BUY", sym, qty, price, cost });
+  savePortfolio();
+  document.getElementById("buyQty").value = 1;
+  document.getElementById("buyPrice").value = "";
+  document.getElementById("buyHint").textContent = `Bought ${qty} × ${sym.replace(".NS","")} @ ₹${price.toFixed(1)}`;
+  alert(`Bought ${qty} × ${sym.replace(".NS","")} @ ₹${price.toFixed(1)}\nCost: ₹${cost.toFixed(0)}`);
+}
+
+function executeSell() {
+  const sym = document.getElementById("sellSelect").value;
+  const qty = Number(document.getElementById("sellQty").value) || 0;
+  const price = Number(document.getElementById("sellPrice").value) || 0;
+  if (!sym || qty <= 0 || price <= 0) {
+    alert("Select holding, enter quantity and sell price.");
+    return;
+  }
+  const h = portfolio.holdings[sym];
+  if (!h || h.qty < qty) {
+    alert(`Not enough quantity. You hold ${h ? h.qty : 0}`);
+    return;
+  }
+  const proceeds = qty * price;
+  h.qty -= qty;
+  portfolio.cash += proceeds;
+  portfolio.txns.push({ date: new Date().toISOString(), type: "SELL", sym, qty, price, proceeds });
+  if (h.qty <= 0) delete portfolio.holdings[sym];
+  else h.lastPrice = price;
+  savePortfolio();
+  document.getElementById("sellQty").value = 1;
+  document.getElementById("sellPrice").value = "";
+  alert(`Sold ${qty} × ${sym.replace(".NS","")} @ ₹${price.toFixed(1)}\nReceived: ₹${proceeds.toFixed(0)}`);
+}
+
+function renderHoldings() {
+  const container = document.getElementById("holdingsList");
+  const sellSel = document.getElementById("sellSelect");
+  const syms = Object.keys(portfolio.holdings);
+
+  // Update sell dropdown
+  if (sellSel) {
+    const prev = sellSel.value;
+    sellSel.innerHTML = '<option value="">— Select holding —</option>';
+    syms.forEach(s => {
+      sellSel.innerHTML += `<option value="${s}">${s.replace(".NS","")} (${portfolio.holdings[s].qty})</option>`;
+    });
+    if (prev && portfolio.holdings[prev]) sellSel.value = prev;
+  }
+
+  if (syms.length === 0) {
+    container.innerHTML = '<p class="text-slate-400 text-sm py-3 text-center">No holdings yet</p>';
+    renderRecords();
+    return;
+  }
+
+  let html = "";
+  syms.forEach(sym => {
+    const h = portfolio.holdings[sym];
+    const ltp = h.lastPrice || h.avg;
+    const invested = h.qty * h.avg;
+    const value = h.qty * ltp;
+    const pnl = value - invested;
+    html += `
+      <div class="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
+        <div>
+          <div class="font-semibold text-slate-800">${sym.replace(".NS","")}</div>
+          <div class="text-xs text-slate-400">${h.qty} qty · Avg ₹${h.avg.toFixed(1)}</div>
+        </div>
+        <div class="text-right">
+          <div class="font-medium text-sm">${fmt(value)}</div>
+          <div class="text-xs ${pnl >= 0 ? 'text-green-600' : 'text-red-500'}">${pnl >= 0 ? "+" : ""}${fmt(pnl)}</div>
+        </div>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+  renderRecords();
+}
+
+function renderRecords() {
+  const list = document.getElementById("recordsList");
+  const empty = document.getElementById("recordsEmpty");
+  if (!list) return;
+
+  const syms = Object.keys(portfolio.holdings);
+  let investedTotal = 0;
+  let currentTotal = 0;
+
+  if (syms.length === 0) {
+    list.innerHTML = "";
+    if (empty) empty.classList.remove("hidden");
+    document.getElementById("sumInvested").textContent = "₹0";
+    document.getElementById("sumCurrent").textContent = "₹0";
+    document.getElementById("sumPnl").textContent = "₹0";
+    document.getElementById("sumPnl").className = "text-base font-bold";
+    document.getElementById("sumCash").textContent = fmt(portfolio.cash);
+    return;
+  }
+  if (empty) empty.classList.add("hidden");
+
+  let html = "";
+  syms.forEach(sym => {
+    const h = portfolio.holdings[sym];
+    const ltp = h.lastPrice || h.avg;
+    const invested = h.qty * h.avg;
+    const value = h.qty * ltp;
+    const pnl = value - invested;
+    const pnlPct = h.avg > 0 ? ((ltp / h.avg - 1) * 100) : 0;
+    investedTotal += invested;
+    currentTotal += value;
+
+    html += `
+      <div class="card p-4" ${h.verdict === "Remove" ? 'style="border-left:4px solid #dc2626"' : ""}>
+        <div class="flex justify-between items-start mb-2">
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-bold text-slate-800 text-base">${sym.replace(".NS","")}</span>
+              ${h.verdict
+                ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${h.verdict === "Buy" ? "v-buy" : h.verdict === "Remove" ? "v-remove" : "v-hold"}">${h.verdict}</span>`
+                : `<span class="px-2 py-0.5 rounded-full text-[11px] text-slate-400 border border-slate-200">No verdict</span>`}
+            </div>
+            <div class="text-xs text-slate-400">${h.verdict && h.reason ? h.reason : sym}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-sm font-semibold ${pnl >= 0 ? 'text-green-600' : 'text-red-500'}">${pnl >= 0 ? "+" : ""}${fmt(pnl)}</div>
+            <div class="text-xs ${pnl >= 0 ? 'text-green-600' : 'text-red-500'}">${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-xs mt-2">
+          <div class="bg-slate-50 rounded-lg p-2">
+            <div class="text-slate-400">Qty</div>
+            <div class="font-semibold text-slate-800">${h.qty}</div>
+          </div>
+          <div class="bg-slate-50 rounded-lg p-2">
+            <div class="text-slate-400">Avg Buy</div>
+            <div class="font-semibold text-slate-800">₹${h.avg.toFixed(2)}</div>
+          </div>
+          <div class="bg-slate-50 rounded-lg p-2">
+            <div class="text-slate-400">Current / Last</div>
+            <div class="font-semibold text-slate-800">₹${ltp.toFixed(2)}</div>
+          </div>
+          <div class="bg-slate-50 rounded-lg p-2">
+            <div class="text-slate-400">Invested</div>
+            <div class="font-semibold text-slate-800">${fmt(invested)}</div>
+          </div>
+        </div>
+        <div class="mt-2 flex justify-between text-xs">
+          <span class="text-slate-400">Current Value</span>
+          <span class="font-semibold text-indigo-600">${fmt(value)}</span>
+        </div>
+      </div>
+    `;
+  });
+  list.innerHTML = html;
+
+  const removeSyms = syms.filter(x => portfolio.holdings[x].verdict === "Remove");
+  const banner = document.getElementById("recordsVerdictBanner");
+  if (banner) {
+    const times = syms.map(x => portfolio.holdings[x].vAt || 0).filter(Boolean);
+    const upd = times.length ? `Updated ${new Date(Math.min(...times)).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}` : "Tap Refresh to get verdicts";
+    const topNote = top20List.length ? "" : " · Top-20 check skipped (load Ranking tab once)";
+    banner.innerHTML = removeSyms.length
+      ? `<div class="v-remove rounded-xl px-3 py-2 text-xs font-semibold mb-1">⚠ ${removeSyms.length} to remove: ${removeSyms.map(x => x.replace(".NS","")).join(", ")}</div><div class="text-[11px] text-slate-400">${upd}${topNote}</div>`
+      : `<div class="text-[11px] text-slate-400">${upd}${topNote}</div>`;
+  }
+
+  const overallPnl = currentTotal - investedTotal;
+  document.getElementById("sumInvested").textContent = fmt(investedTotal);
+  document.getElementById("sumCurrent").textContent = fmt(currentTotal);
+  document.getElementById("sumPnl").textContent = (overallPnl >= 0 ? "+" : "") + fmt(overallPnl);
+  document.getElementById("sumPnl").className = "text-base font-bold " + (overallPnl >= 0 ? "text-green-600" : "text-red-500");
+  document.getElementById("sumCash").textContent = fmt(portfolio.cash);
+}
+
+async function refreshRecordsPrices() {
+  const syms = Object.keys(portfolio.holdings);
+  if (syms.length === 0) return;
+  const btn = document.getElementById("refreshRecordsBtn");
+  if (btn) { btn.disabled = true; }
+  let done = 0, failed = 0;
+  const batchSize = 3;
+  for (let i = 0; i < syms.length; i += batchSize) {
+    const batch = syms.slice(i, i + batchSize);
+    await Promise.all(batch.map(async (sym) => {
+      try {
+        const rows = await fetchYahooChart(sym, "6mo"); // enough bars for price + indicators
+        const h = portfolio.holdings[sym];
+        if (!h) return;
+        const price = rows.meta?.regularMarketPrice ?? rows[rows.length - 1].close;
+        if (price) h.lastPrice = price;
+        const { metrics } = scoreStock(rows);
+        const inTop = top20List.length ? top20List.includes(sym) : true;
+        const { verdict, reason } = generateVerdict(metrics, inTop);
+        h.verdict = verdict;
+        h.reason = reason;
+        h.vAt = Date.now();
+      } catch (_) { failed++; }
+      done++;
+      if (btn) btn.textContent = `Updating ${done}/${syms.length}…`;
+    }));
+  }
+  savePortfolio();
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = failed ? `↻ Refresh Prices (${failed} failed – retry)` : "↻ Refresh Prices";
+  }
+}
+
+function resetPortfolio() {
+  if (confirm("Clear entire portfolio and all records?")) {
+    portfolio = { cash: 0, holdings: {}, txns: [] };
+    savePortfolio();
+  }
+}
+
+function calcSIP() {
+  const monthly = Number(document.getElementById("sipMonthly").value) || 3000;
+  const years = Number(document.getElementById("sipYears").value) || 3;
+  const cagr = Number(document.getElementById("sipCagr").value) || 14;
+  const r = cagr / 100 / 12;
+  const n = years * 12;
+  const fv = monthly * (((Math.pow(1 + r, n) - 1) / r) * (1 + r));
+  const invested = monthly * n;
+  document.getElementById("sipResult").innerHTML = `
+    <div class="card p-3"><div class="text-[10px] text-slate-400">Invested</div><div class="text-sm font-bold">${fmt(invested)}</div></div>
+    <div class="card p-3"><div class="text-[10px] text-slate-400">Corpus</div><div class="text-sm font-bold text-indigo-600">${fmt(fv)}</div></div>
+    <div class="card p-3"><div class="text-[10px] text-slate-400">Gain</div><div class="text-sm font-bold text-green-600">${fmt(fv - invested)}</div></div>
+  `;
+}
+
+// Enhance switchTab to refresh records when opened
+const _origSwitch = switchTab;
+switchTab = function(name) {
+  _origSwitch(name);
+  if (name === "records" || name === "portfolio") renderHoldings();
+};
+
+function init() {
+  const microSel = document.getElementById("microSelect");
+  const buySel = document.getElementById("buySelect");
+  NIFTY50.forEach(s => {
+    const name = s.replace(".NS", "");
+    microSel.innerHTML += `<option value="${s}">${name}</option>`;
+    buySel.innerHTML += `<option value="${s}">${name}</option>`;
+  });
+  buySel.addEventListener("change", () => { document.getElementById("buyPrice").value = ""; fetchBuyPrice(); });
+  savePortfolio();
+  calcSIP();
+  switchTab("ranking");
+
+  // Installable PWA
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  }
+}
+init();
+</script>
+</body>
+</html>

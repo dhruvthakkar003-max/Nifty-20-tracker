@@ -1,0 +1,26 @@
+{
+  "name": "Nifty Top-20 Strategy",
+  "short_name": "Nifty Top-20",
+  "description": "Growth + Momentum ranking, Buy/Hold/Remove signals, portfolio tracker for Nifty stocks",
+  "start_url": "./nifty_strategy_app.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#4338ca",
+  "theme_color": "#4338ca",
+  "lang": "en-IN",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
