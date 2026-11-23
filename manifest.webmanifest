@@ -1,37 +1,35 @@
 {
   "name": "Nifty Top-20 Strategy",
   "short_name": "Nifty Top-20",
-  "description": "Nifty growth + momentum ranking, Buy Hold Remove signals, portfolio tracker",
-  "id": "./",
-  "start_url": "./index.html",
+  "description": "Nifty ranking, Buy Hold Remove signals, portfolio tracker",
+  "start_url": "./index.html?source=pwa",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#4338ca",
   "theme_color": "#4338ca",
   "lang": "en-IN",
-  "dir": "ltr",
   "icons": [
     {
-      "src": "./icon-192.png",
+      "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./icon-192.png",
+      "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "./icon-512.png",
+      "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./icon-512.png",
+      "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
