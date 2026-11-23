@@ -1,29 +1,31 @@
-/* Nifty Top-20 – offline shell cache */
-const CACHE = "nifty-top20-v1";
+/* Nifty Top-20 PWA – works on GitHub Pages (root or /repo/) */
+const CACHE = "nifty-top20-gh-v2";
+
 const ASSETS = [
-  "./nifty_strategy_app.html",
+  "./",
+  "./index.html",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png"
 ];
 
-self.addEventListener("install", (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
   );
 });
 
-self.addEventListener("activate", (e) => {
-  e.waitUntil(
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
 
-self.addEventListener("fetch", (e) => {
-  const url = e.request.url;
-  // Never cache live market data / proxies
+self.addEventListener("fetch", (event) => {
+  const url = event.request.url;
+  // Do not cache live market / proxy traffic
   if (
     url.includes("finance.yahoo.com") ||
     url.includes("cors.dev") ||
@@ -32,20 +34,24 @@ self.addEventListener("fetch", (e) => {
   ) {
     return;
   }
-  e.respondWith(
-    caches.match(e.request).then((cached) => {
+
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
       if (cached) return cached;
-      return fetch(e.request).then((res) => {
-        // cache same-origin static only
-        try {
-          const u = new URL(e.request.url);
-          if (u.origin === self.location.origin && e.request.method === "GET") {
-            const clone = res.clone();
-            caches.open(CACHE).then((c) => c.put(e.request, clone));
+      return fetch(event.request)
+        .then((res) => {
+          if (event.request.method === "GET" && res.ok) {
+            try {
+              const u = new URL(event.request.url);
+              if (u.origin === self.location.origin) {
+                const clone = res.clone();
+                caches.open(CACHE).then((c) => c.put(event.request, clone));
+              }
+            } catch (_) {}
           }
-        } catch (_) {}
-        return res;
-      }).catch(() => cached);
+          return res;
+        })
+        .catch(() => cached || caches.match("./index.html"));
     })
   );
 });
