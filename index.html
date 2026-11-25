@@ -254,8 +254,9 @@
         <select id="microSelect" class="flex-1 border border-slate-200 rounded-xl px-3 py-3 bg-white text-slate-800"></select>
         <button onclick="loadMicro()" class="btn btn-primary shrink-0">Load</button>
       </div>
-      <div id="microMetrics" class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3"></div>
       <div id="microVerdict" class="mb-3"></div>
+      <div id="microTechList" class="mb-3"></div>
+      <div id="microMetrics" class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3"></div>
       <div class="card p-3 mb-3" style="height:220px"><canvas id="priceChart"></canvas></div>
       <div class="grid grid-cols-1 gap-3">
         <div class="card p-3" style="height:160px"><canvas id="rsiChart"></canvas></div>
@@ -338,6 +339,7 @@
         <div class="card p-3 text-center">
           <div class="text-[10px] text-slate-400">Overall P&amp;L</div>
           <div id="sumPnl" class="text-base font-bold">₹0</div>
+          <div id="sumPnlPct" class="text-xs font-semibold mt-0.5">0%</div>
         </div>
         <div class="card p-3 text-center">
           <div class="text-[10px] text-slate-400">Cash</div>
@@ -350,9 +352,23 @@
       </div>
 
       <div id="recordsVerdictBanner" class="mb-2"></div>
-      <div id="recordsList" class="space-y-2"></div>
-      <div id="recordsEmpty" class="card p-6 text-center text-slate-400 text-sm hidden">
+      <div id="recordsList" class="space-y-2 mb-4"></div>
+      <div id="recordsEmpty" class="card p-6 text-center text-slate-400 text-sm hidden mb-4">
         No holdings yet. Buy stocks from Portfolio tab.
+      </div>
+
+      <!-- Monthly / Quarterly report -->
+      <div class="card p-4 mb-3">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-slate-800 text-sm">Performance Report</h3>
+          <div class="flex gap-1">
+            <button onclick="setReportPeriod('month')" id="btnReportMonth" class="filter-btn active-filter px-3 py-1 rounded-full text-xs font-semibold border border-slate-200">Monthly</button>
+            <button onclick="setReportPeriod('quarter')" id="btnReportQuarter" class="filter-btn px-3 py-1 rounded-full text-xs font-semibold border border-slate-200">Quarterly</button>
+          </div>
+        </div>
+        <div id="reportSummary" class="grid grid-cols-2 gap-2 mb-3"></div>
+        <div id="reportList" class="space-y-2 text-sm"></div>
+        <p class="text-[11px] text-slate-400 mt-3">Based on your buy/sell history + current holding prices. Unrealized P&amp;L uses last refreshed price.</p>
       </div>
     </section>
 
@@ -832,36 +848,108 @@ async function loadMicro() {
   if (!sym) return;
   const metricsDiv = document.getElementById("microMetrics");
   const verdictDiv = document.getElementById("microVerdict");
+  const techList = document.getElementById("microTechList");
   metricsDiv.innerHTML = '<div class="col-span-2 flex justify-center py-6"><div class="spinner"></div></div>';
   verdictDiv.innerHTML = "";
+  if (techList) techList.innerHTML = "";
 
   try {
     const rows = await fetchYahooChart(sym, "1y");
     const closes = rows.map(r => r.close);
+    const volumes = rows.map(r => r.volume);
     const { score, metrics } = scoreStock(rows);
-    const inTop = top20List.includes(sym);
+    const inTop = top20List.length ? top20List.includes(sym) : true;
     const { verdict, reason } = generateVerdict(metrics, inTop);
     const vClass = verdict === "Buy" ? "v-buy" : verdict === "Remove" ? "v-remove" : "v-hold";
 
+    const ma20pct = metrics.ma20 ? ((metrics.price / metrics.ma20 - 1) * 100) : 0;
+    const ma50pct = metrics.ma50 ? ((metrics.price / metrics.ma50 - 1) * 100) : 0;
+    const rsiVal = metrics.rsi ?? 50;
+    const ret1 = metrics.ret1m ?? 0;
+    const ret3 = metrics.ret3m ?? 0;
+    const volMa = sma(volumes, 20);
+    const last = closes.length - 1;
+    const volRatio = (volMa[last] && volMa[last] > 0) ? volumes[last] / volMa[last] : 1;
+    const { macd: mLine, signal: sLine, hist } = macd(closes);
+    const macdNow = mLine[last];
+    const sigNow = sLine[last];
+    const histNow = hist[last];
+    const macdBull = macdNow != null && sigNow != null && macdNow > sigNow;
+
+    // Detailed VERDICT
+    const why = [];
+    if (metrics.aboveMa20) why.push("Price above 20-DMA (short-term trend up)");
+    else why.push("Price below 20-DMA (short-term weakness)");
+    if (metrics.aboveMa50) why.push("Price above 50-DMA (medium-term trend up)");
+    else why.push("Price below 50-DMA (medium-term weakness)");
+    if (rsiVal >= 40 && rsiVal <= 65) why.push("RSI healthy (not overbought/oversold)");
+    else if (rsiVal > 70) why.push("RSI overbought zone");
+    else if (rsiVal < 30) why.push("RSI oversold zone");
+    else why.push("RSI neutral-to-weak");
+    if (ret3 > 0) why.push("3-month momentum positive");
+    else why.push("3-month momentum negative");
+    if (ret1 > 0) why.push("1-month momentum positive");
+    else why.push("1-month momentum negative");
+    if (!inTop && top20List.length) why.push("Not in current Top-20 ranking");
+
+    verdictDiv.innerHTML = `
+      <div class="card p-4">
+        <div class="flex items-center gap-2 mb-2 flex-wrap">
+          <span class="px-3 py-1.5 rounded-full text-sm font-semibold ${vClass}">${verdict}</span>
+          <span class="text-xs text-slate-500">Score ${score.toFixed(1)}/100</span>
+        </div>
+        <div class="text-sm font-medium text-slate-800 mb-1">${reason}</div>
+        <ul class="text-xs text-slate-600 space-y-1 mt-2 list-disc pl-4">
+          ${why.map(w => `<li>${w}</li>`).join("")}
+        </ul>
+      </div>
+    `;
+
+    // Technical parameters with + / −
+    const params = [
+      { name: "1M Return", val: ret1, unit: "%", pos: ret1 > 0, detail: ret1.toFixed(1) + "%" },
+      { name: "3M Return", val: ret3, unit: "%", pos: ret3 > 0, detail: ret3.toFixed(1) + "%" },
+      { name: "vs MA20", val: ma20pct, unit: "%", pos: ma20pct > 0, detail: (ma20pct >= 0 ? "+" : "") + ma20pct.toFixed(1) + "%" },
+      { name: "vs MA50", val: ma50pct, unit: "%", pos: ma50pct > 0, detail: (ma50pct >= 0 ? "+" : "") + ma50pct.toFixed(1) + "%" },
+      { name: "RSI (14)", val: rsiVal, unit: "", pos: rsiVal >= 40 && rsiVal <= 70, detail: rsiVal.toFixed(1) },
+      { name: "Above MA20", val: metrics.aboveMa20 ? 1 : -1, pos: metrics.aboveMa20, detail: metrics.aboveMa20 ? "Yes" : "No" },
+      { name: "Above MA50", val: metrics.aboveMa50 ? 1 : -1, pos: metrics.aboveMa50, detail: metrics.aboveMa50 ? "Yes" : "No" },
+      { name: "MACD vs Signal", val: macdBull ? 1 : -1, pos: macdBull, detail: macdBull ? "Bullish" : "Bearish" },
+      { name: "MACD Hist", val: histNow ?? 0, pos: (histNow ?? 0) > 0, detail: histNow != null ? histNow.toFixed(2) : "—" },
+      { name: "Volume vs 20D", val: volRatio, pos: volRatio >= 1, detail: volRatio.toFixed(2) + "x" },
+      { name: "Composite Score", val: score, pos: score >= 50, detail: score.toFixed(1) },
+    ];
+
+    if (techList) {
+      techList.innerHTML = `
+        <div class="card p-3">
+          <div class="text-xs font-semibold text-slate-500 mb-2">Technical parameters</div>
+          <div class="space-y-1.5">
+            ${params.map(p => `
+              <div class="flex items-center justify-between text-sm py-1 border-b border-slate-50 last:border-0">
+                <span class="text-slate-600">${p.name}</span>
+                <span class="font-semibold ${p.pos ? "text-green-600" : "text-red-500"}">
+                  ${p.pos ? "▲ +" : "▼ −"} ${p.detail}
+                </span>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    }
+
     metricsDiv.innerHTML = `
       <div class="card p-3 text-center"><div class="text-[10px] text-slate-400">Price</div><div class="text-base font-bold">${metrics.price?.toFixed(1)}</div></div>
-      <div class="card p-3 text-center"><div class="text-[10px] text-slate-400">RSI</div><div class="text-base font-bold">${metrics.rsi?.toFixed(1)}</div></div>
-      <div class="card p-3 text-center"><div class="text-[10px] text-slate-400">vs MA20</div><div class="text-base font-bold">${((metrics.price / metrics.ma20 - 1) * 100).toFixed(1)}%</div></div>
-      <div class="card p-3 text-center"><div class="text-[10px] text-slate-400">vs MA50</div><div class="text-base font-bold">${((metrics.price / metrics.ma50 - 1) * 100).toFixed(1)}%</div></div>
+      <div class="card p-3 text-center"><div class="text-[10px] text-slate-400">RSI</div><div class="text-base font-bold ${rsiVal >= 40 && rsiVal <= 70 ? "text-green-600" : "text-red-500"}">${rsiVal.toFixed(1)}</div></div>
+      <div class="card p-3 text-center"><div class="text-[10px] text-slate-400">vs MA20</div><div class="text-base font-bold ${ma20pct >= 0 ? "text-green-600" : "text-red-500"}">${ma20pct.toFixed(1)}%</div></div>
+      <div class="card p-3 text-center"><div class="text-[10px] text-slate-400">vs MA50</div><div class="text-base font-bold ${ma50pct >= 0 ? "text-green-600" : "text-red-500"}">${ma50pct.toFixed(1)}%</div></div>
       <div class="card p-3 text-center col-span-2 sm:col-span-1"><div class="text-[10px] text-slate-400">Score</div><div class="text-base font-bold">${score.toFixed(1)}</div></div>
-    `;
-    verdictDiv.innerHTML = `
-      <div class="card p-3 flex items-center gap-3">
-        <span class="px-3 py-1.5 rounded-full text-sm font-semibold ${vClass}">${verdict}</span>
-        <span class="text-sm text-slate-600">${reason}</span>
-      </div>
     `;
 
     const labels = rows.map(r => r.date);
     const ma20 = sma(closes, 20);
     const ma50 = sma(closes, 50);
     const rsiArr = rsi(closes);
-    const { macd: mLine, signal: sLine, hist } = macd(closes);
 
     if (priceCharts.price) priceCharts.price.destroy();
     if (priceCharts.rsi) priceCharts.rsi.destroy();
@@ -1034,6 +1122,132 @@ function renderHoldings() {
   renderRecords();
 }
 
+let reportPeriod = "month";
+
+function setReportPeriod(p) {
+  reportPeriod = p;
+  document.getElementById("btnReportMonth")?.classList.toggle("active-filter", p === "month");
+  document.getElementById("btnReportQuarter")?.classList.toggle("active-filter", p === "quarter");
+  renderPerformanceReport();
+}
+
+function renderPerformanceReport() {
+  const listEl = document.getElementById("reportList");
+  const sumEl = document.getElementById("reportSummary");
+  if (!listEl || !sumEl) return;
+
+  const txns = portfolio.txns || [];
+  const buckets = {}; // key -> { invested, soldCost, soldProceeds, buys, sells }
+
+  txns.forEach(t => {
+    const d = new Date(t.date);
+    if (isNaN(d)) return;
+    let key;
+    if (reportPeriod === "quarter") {
+      const q = Math.floor(d.getMonth() / 3) + 1;
+      key = `${d.getFullYear()} Q${q}`;
+    } else {
+      key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    }
+    if (!buckets[key]) buckets[key] = { invested: 0, soldCost: 0, soldProceeds: 0, buys: 0, sells: 0, credits: 0 };
+    if (t.type === "BUY") {
+      buckets[key].invested += t.cost || (t.qty * t.price) || 0;
+      buckets[key].buys += 1;
+    } else if (t.type === "SELL") {
+      buckets[key].soldProceeds += t.proceeds || (t.qty * t.price) || 0;
+      // approximate cost of sold units using portfolio avg is hard historically; use price*qty as proceeds only
+      buckets[key].sells += 1;
+    } else if (t.type === "CREDIT") {
+      buckets[key].credits += t.amount || 0;
+    }
+  });
+
+  // Current unrealized
+  let unrealized = 0, investedNow = 0;
+  Object.keys(portfolio.holdings).forEach(sym => {
+    const h = portfolio.holdings[sym];
+    const inv = h.qty * h.avg;
+    const val = h.qty * (h.lastPrice || h.avg);
+    investedNow += inv;
+    unrealized += (val - inv);
+  });
+
+  const keys = Object.keys(buckets).sort().reverse();
+  let realizedApprox = 0;
+  keys.forEach(k => { realizedApprox += buckets[k].soldProceeds; });
+
+  sumEl.innerHTML = `
+    <div class="bg-slate-50 rounded-xl p-2 text-center">
+      <div class="text-[10px] text-slate-400">Unrealized P&amp;L</div>
+      <div class="text-sm font-bold ${unrealized >= 0 ? "text-green-600" : "text-red-500"}">${unrealized >= 0 ? "+" : ""}${fmt(unrealized)}</div>
+      <div class="text-[10px] ${unrealized >= 0 ? "text-green-600" : "text-red-500"}">${investedNow > 0 ? ((unrealized / investedNow) * 100).toFixed(1) : "0"}%</div>
+    </div>
+    <div class="bg-slate-50 rounded-xl p-2 text-center">
+      <div class="text-[10px] text-slate-400">Sell proceeds (hist.)</div>
+      <div class="text-sm font-bold text-slate-800">${fmt(realizedApprox)}</div>
+      <div class="text-[10px] text-slate-400">${keys.length} period(s)</div>
+    </div>
+  `;
+
+  if (keys.length === 0) {
+    listEl.innerHTML = `<p class="text-slate-400 text-xs text-center py-3">No buy/sell history yet. Reports fill as you trade.</p>`;
+    // still show current holdings snapshot
+    const holdKeys = Object.keys(portfolio.holdings);
+    if (holdKeys.length) {
+      listEl.innerHTML += `<div class="text-xs font-semibold text-slate-500 mt-2 mb-1">Current holdings snapshot</div>`;
+      holdKeys.forEach(sym => {
+        const h = portfolio.holdings[sym];
+        const inv = h.qty * h.avg;
+        const val = h.qty * (h.lastPrice || h.avg);
+        const pnl = val - inv;
+        const pct = inv > 0 ? (pnl / inv) * 100 : 0;
+        listEl.innerHTML += `
+          <div class="flex justify-between py-2 border-b border-slate-50">
+            <span class="font-medium">${sym.replace(".NS","")}</span>
+            <span class="${pnl >= 0 ? "text-green-600" : "text-red-500"} font-semibold">${pnl >= 0 ? "+" : ""}${fmt(pnl)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)</span>
+          </div>`;
+      });
+    }
+    return;
+  }
+
+  listEl.innerHTML = keys.map(k => {
+    const b = buckets[k];
+    const label = reportPeriod === "month"
+      ? new Date(k + "-01").toLocaleString("en-IN", { month: "short", year: "numeric" })
+      : k;
+    return `
+      <div class="border border-slate-100 rounded-xl p-3">
+        <div class="font-semibold text-slate-800 mb-1">${label}</div>
+        <div class="grid grid-cols-2 gap-1 text-xs text-slate-600">
+          <div>Buys: <strong>${b.buys}</strong></div>
+          <div>Sells: <strong>${b.sells}</strong></div>
+          <div>Invested: <strong>${fmt(b.invested)}</strong></div>
+          <div>Sell proceeds: <strong>${fmt(b.soldProceeds)}</strong></div>
+          ${b.credits ? `<div class="col-span-2">Cash added: <strong>${fmt(b.credits)}</strong></div>` : ""}
+        </div>
+      </div>`;
+  }).join("");
+
+  // Holdings performance under report
+  const holdKeys = Object.keys(portfolio.holdings);
+  if (holdKeys.length) {
+    listEl.innerHTML += `<div class="text-xs font-semibold text-slate-500 mt-3 mb-1">Current holdings P&amp;L %</div>`;
+    holdKeys.forEach(sym => {
+      const h = portfolio.holdings[sym];
+      const inv = h.qty * h.avg;
+      const val = h.qty * (h.lastPrice || h.avg);
+      const pnl = val - inv;
+      const pct = inv > 0 ? (pnl / inv) * 100 : 0;
+      listEl.innerHTML += `
+        <div class="flex justify-between py-2 border-b border-slate-50">
+          <span class="font-medium">${sym.replace(".NS","")}</span>
+          <span class="${pnl >= 0 ? "text-green-600" : "text-red-500"} font-semibold">${pnl >= 0 ? "+" : ""}${fmt(pnl)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)</span>
+        </div>`;
+    });
+  }
+}
+
 function renderRecords() {
   const list = document.getElementById("recordsList");
   const empty = document.getElementById("recordsEmpty");
@@ -1050,7 +1264,10 @@ function renderRecords() {
     document.getElementById("sumCurrent").textContent = "₹0";
     document.getElementById("sumPnl").textContent = "₹0";
     document.getElementById("sumPnl").className = "text-base font-bold";
+    const pctEl = document.getElementById("sumPnlPct");
+    if (pctEl) { pctEl.textContent = "0%"; pctEl.className = "text-xs font-semibold mt-0.5"; }
     document.getElementById("sumCash").textContent = fmt(portfolio.cash);
+    renderPerformanceReport();
     return;
   }
   if (empty) empty.classList.add("hidden");
@@ -1080,7 +1297,7 @@ function renderRecords() {
           </div>
           <div class="text-right">
             <div class="text-sm font-semibold ${pnl >= 0 ? 'text-green-600' : 'text-red-500'}">${pnl >= 0 ? "+" : ""}${fmt(pnl)}</div>
-            <div class="text-xs ${pnl >= 0 ? 'text-green-600' : 'text-red-500'}">${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%</div>
+            <div class="text-xs font-semibold ${pnl >= 0 ? 'text-green-600' : 'text-red-500'}">${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%</div>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-2 text-xs mt-2">
@@ -1105,6 +1322,10 @@ function renderRecords() {
           <span class="text-slate-400">Current Value</span>
           <span class="font-semibold text-indigo-600">${fmt(value)}</span>
         </div>
+        <div class="mt-1 flex justify-between text-xs">
+          <span class="text-slate-400">P&amp;L %</span>
+          <span class="font-semibold ${pnlPct >= 0 ? 'text-green-600' : 'text-red-500'}">${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%</span>
+        </div>
       </div>
     `;
   });
@@ -1122,11 +1343,18 @@ function renderRecords() {
   }
 
   const overallPnl = currentTotal - investedTotal;
+  const overallPct = investedTotal > 0 ? (overallPnl / investedTotal) * 100 : 0;
   document.getElementById("sumInvested").textContent = fmt(investedTotal);
   document.getElementById("sumCurrent").textContent = fmt(currentTotal);
   document.getElementById("sumPnl").textContent = (overallPnl >= 0 ? "+" : "") + fmt(overallPnl);
   document.getElementById("sumPnl").className = "text-base font-bold " + (overallPnl >= 0 ? "text-green-600" : "text-red-500");
+  const pctEl = document.getElementById("sumPnlPct");
+  if (pctEl) {
+    pctEl.textContent = (overallPct >= 0 ? "+" : "") + overallPct.toFixed(1) + "%";
+    pctEl.className = "text-xs font-semibold mt-0.5 " + (overallPct >= 0 ? "text-green-600" : "text-red-500");
+  }
   document.getElementById("sumCash").textContent = fmt(portfolio.cash);
+  renderPerformanceReport();
 }
 
 async function refreshRecordsPrices() {
@@ -1201,6 +1429,7 @@ function init() {
     buySel.innerHTML += `<option value="${s}">${name}</option>`;
   });
   buySel.addEventListener("change", () => { document.getElementById("buyPrice").value = ""; fetchBuyPrice(); });
+  microSel.addEventListener("change", () => { loadMicro(); });
   savePortfolio();
   calcSIP();
   switchTab("ranking");
